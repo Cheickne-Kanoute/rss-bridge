@@ -4,87 +4,81 @@ class GoogleNewsSearchBridge extends BridgeAbstract {
 
     const NAME = 'Google News Search';
     const URI = 'https://news.google.com/';
-    const DESCRIPTION = 'Recherche d’actualités Google News (titre, description, lien, source)';
+    const DESCRIPTION = 'Recherche Google News avec titre, lien, image, auteur';
     const MAINTAINER = 'GPT-AES';
-    const PARAMETERS = [
-        [
-            'q' => [
-                'name' => 'Requête de recherche',
-                'type' => 'text',
-                'required' => true,
-                'exampleValue' => 'mali niger burkina faso aes'
-            ],
-            'hl' => [
-                'name' => 'Langue',
-                'type' => 'list',
-                'values' => [
-                    'Français (fr)' => 'fr',
-                    'Anglais (en)' => 'en'
-                ],
-                'defaultValue' => 'fr'
-            ],
-            'gl' => [
-                'name' => 'Pays',
-                'type' => 'text',
-                'defaultValue' => 'FR'
-            ],
-            'ceid' => [
-                'name' => 'Édition (ceid)',
-                'type' => 'text',
-                'defaultValue' => 'FR:fr'
-            ]
-        ]
-    ];
+    const PARAMETERS = [[
+        'q' => ['name' => 'Mot-clé', 'type' => 'text', 'required' => true, 'exampleValue' => 'Mali'],
+        'hl' => ['name' => 'Langue', 'type' => 'list', 'values' => ['Français' => 'fr', 'Anglais' => 'en'], 'defaultValue' => 'fr'],
+        'gl' => ['name' => 'Pays', 'type' => 'text', 'defaultValue' => 'FR'],
+        'ceid' => ['name' => 'Édition (ceid)', 'type' => 'text', 'defaultValue' => 'FR:fr']
+    ]];
 
     public function collectData() {
-        $query = urlencode($this->getInput('q'));
+        $q = urlencode($this->getInput('q'));
         $hl = $this->getInput('hl');
         $gl = $this->getInput('gl');
         $ceid = $this->getInput('ceid');
 
-        $url = 'https://news.google.com/search?q=' . $query
-            . '&hl=' . $hl . '&gl=' . $gl . '&ceid=' . urlencode($ceid);
+        $url = "https://news.google.com/search?q=$q&hl=$hl&gl=$gl&ceid=$ceid";
+        $html = getSimpleHTMLDOM($url) or returnServerError('Impossible de charger Google News');
 
-        $html = getSimpleHTMLDOM($url)
-            or returnServerError('Impossible de charger Google News');
+        foreach ($html->find('main article') as $article) {
+            // Titre et lien
+            $titleTag = $article->find('h3 a, h4 a', 0);
+            if (!$titleTag) continue;
 
-        foreach ($html->find('article') as $article) {
-            $titleElement = $article->find('h3 a, h4 a', 0);
-            if (!$titleElement) continue;
+            $title = trim($titleTag->plaintext);
+            $relativeUrl = $titleTag->href;
+            $fullUrl = str_replace('./', self::URI, $relativeUrl);
 
-            $title = html_entity_decode($titleElement->plaintext);
-            $relativeLink = $titleElement->href;
-            $fullLink = urljoin(self::URI, $relativeLink);
-            $fullLink = str_replace('./articles/', 'https://news.google.com/articles/', $fullLink);
-
-            $description = '';
-            $descElement = $article->find('span', 1);
-            if ($descElement) {
-                $description = html_entity_decode($descElement->plaintext);
-            }
-
+            // Source (auteur)
             $source = '';
-            $srcElement = $article->find('div span', 0);
-            if ($srcElement) {
-                $source = html_entity_decode($srcElement->plaintext);
+            $sourceTag = $article->find('div.bInasb span', 0);
+            if ($sourceTag) {
+                $source = trim(str_replace('Par ', '', $sourceTag->plaintext));
             }
 
+            // Image
+            $imgUrl = '';
+            $imgContainer = $article->find('figure img', 0);
+            if ($imgContainer && isset($imgContainer->src)) {
+                $imgUrl = $imgContainer->src;
+            } elseif ($article->find('a.WwrzSb', 0)) {
+                $styleAttr = $article->find('a.WwrzSb', 0)->getAttribute('style');
+                if (preg_match('/url\((.*?)\)/', $styleAttr, $matches)) {
+                    $imgUrl = $matches[1];
+                }
+            }
+
+            // Description
+            $desc = '';
+            $descTag = $article->find('span', 1);
+            if ($descTag) $desc = trim($descTag->plaintext);
+
+            // Contenu
+            $content = '';
+            if ($imgUrl) {
+                $content .= '<img src="' . htmlspecialchars($imgUrl) . '" style="max-width:100%;"><br>';
+            }
+            $content .= htmlspecialchars($desc);
+
+            // Ajouter à la liste
             $this->items[] = [
-                'uri' => $fullLink,
                 'title' => $title,
-                'timestamp' => time(), // Pas de date précise disponible
+                'uri' => $fullUrl,
                 'author' => $source,
-                'content' => $description
+                'timestamp' => time(),
+                'content' => $content
             ];
         }
     }
 
-    public function getURI() {
-        return self::URI;
+    public function getName() {
+        $q = $this->getInput('q') ?? '';
+        return 'Google News Search : ' . $q;
     }
 
-    public function getName() {
-        $query = $this->getInput('q') ?? '';
-        return 'Google News Search : ' . $query;
+    public function getURI() {
+        return self::URI;
     }
 }
