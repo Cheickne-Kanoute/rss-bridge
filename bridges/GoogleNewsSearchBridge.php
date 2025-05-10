@@ -1,21 +1,26 @@
 <?php
 
 class GoogleNewsSearchBridge extends BridgeAbstract {
-    const NAME = 'Google News Search Bridge';
+
+    const NAME = 'Google News Search';
     const URI = 'https://news.google.com/';
-    const DESCRIPTION = 'Retourne les résultats de Google News pour une recherche donnée';
-    const MAINTAINER = 'cheick';
+    const DESCRIPTION = 'Recherche d’actualités Google News (titre, description, lien, source)';
+    const MAINTAINER = 'GPT-AES';
     const PARAMETERS = [
         [
             'q' => [
-                'name' => 'Mot-clé',
+                'name' => 'Requête de recherche',
                 'type' => 'text',
                 'required' => true,
                 'exampleValue' => 'mali niger burkina faso aes'
             ],
             'hl' => [
                 'name' => 'Langue',
-                'type' => 'text',
+                'type' => 'list',
+                'values' => [
+                    'Français (fr)' => 'fr',
+                    'Anglais (en)' => 'en'
+                ],
                 'defaultValue' => 'fr'
             ],
             'gl' => [
@@ -24,7 +29,7 @@ class GoogleNewsSearchBridge extends BridgeAbstract {
                 'defaultValue' => 'FR'
             ],
             'ceid' => [
-                'name' => 'CEID',
+                'name' => 'Édition (ceid)',
                 'type' => 'text',
                 'defaultValue' => 'FR:fr'
             ]
@@ -32,48 +37,42 @@ class GoogleNewsSearchBridge extends BridgeAbstract {
     ];
 
     public function collectData() {
-        $q = $this->getInput('q');
+        $query = urlencode($this->getInput('q'));
         $hl = $this->getInput('hl');
         $gl = $this->getInput('gl');
         $ceid = $this->getInput('ceid');
 
-        $url = 'https://news.google.com/search?' . http_build_query([
-            'q' => $q,
-            'hl' => $hl,
-            'gl' => $gl,
-            'ceid' => $ceid
-        ]);
+        $url = 'https://news.google.com/search?q=' . $query
+            . '&hl=' . $hl . '&gl=' . $gl . '&ceid=' . urlencode($ceid);
 
         $html = getSimpleHTMLDOM($url)
             or returnServerError('Impossible de charger Google News');
 
         foreach ($html->find('article') as $article) {
-            $a = $article->find('a', 0);
-            if (!$a) continue;
+            $titleElement = $article->find('h3 a, h4 a', 0);
+            if (!$titleElement) continue;
 
-            $title = $a->plaintext;
-            $relativeLink = $a->href;
-            $link = urljoin('https://news.google.com', $relativeLink);
-            $fullLink = str_replace('/articles/', 'https://news.google.com/articles/', $link);
+            $title = html_entity_decode($titleElement->plaintext);
+            $relativeLink = $titleElement->href;
+            $fullLink = urljoin(self::URI, $relativeLink);
+            $fullLink = str_replace('./articles/', 'https://news.google.com/articles/', $fullLink);
 
             $description = '';
-            $descElem = $article->find('span', 1);
-            if ($descElem) {
-                $description = $descElem->plaintext;
+            $descElement = $article->find('span', 1);
+            if ($descElement) {
+                $description = html_entity_decode($descElement->plaintext);
             }
 
             $source = '';
-            $srcElem = $article->find('div span', 0);
-            if ($srcElem) {
-                $source = $srcElem->plaintext;
+            $srcElement = $article->find('div span', 0);
+            if ($srcElement) {
+                $source = html_entity_decode($srcElement->plaintext);
             }
-
-            $timestamp = time(); // Google News n’indique pas la date exacte dans le HTML simple
 
             $this->items[] = [
                 'uri' => $fullLink,
                 'title' => $title,
-                'timestamp' => $timestamp,
+                'timestamp' => time(), // Pas de date précise disponible
                 'author' => $source,
                 'content' => $description
             ];
@@ -81,10 +80,11 @@ class GoogleNewsSearchBridge extends BridgeAbstract {
     }
 
     public function getURI() {
-        return 'https://news.google.com/';
+        return self::URI;
     }
 
     public function getName() {
-        return 'Google News Search : ' . $this->getInput('q');
+        $query = $this->getInput('q') ?? '';
+        return 'Google News Search : ' . $query;
     }
 }
