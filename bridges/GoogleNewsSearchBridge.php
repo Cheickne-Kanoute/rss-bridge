@@ -6,7 +6,7 @@ class GoogleNewsSearchBridge extends BridgeAbstract {
     const DESCRIPTION = 'Retourne les résultats de Google News pour une recherche donnée';
     const MAINTAINER = 'cheick';
     const PARAMETERS = [
-        'global' => [
+        [
             'q' => [
                 'name' => 'Mot-clé',
                 'type' => 'text',
@@ -15,33 +15,33 @@ class GoogleNewsSearchBridge extends BridgeAbstract {
             ],
             'hl' => [
                 'name' => 'Langue',
-                'type' => 'list',
-                'values' => [
-                    'Français' => 'fr'
-                ],
+                'type' => 'text',
                 'defaultValue' => 'fr'
             ],
             'gl' => [
                 'name' => 'Pays',
                 'type' => 'text',
-                'exampleValue' => 'FR',
                 'defaultValue' => 'FR'
             ],
             'ceid' => [
                 'name' => 'CEID',
                 'type' => 'text',
-                'exampleValue' => 'FR:fr',
                 'defaultValue' => 'FR:fr'
             ]
         ]
     ];
 
     public function collectData() {
+        $q = $this->getInput('q');
+        $hl = $this->getInput('hl');
+        $gl = $this->getInput('gl');
+        $ceid = $this->getInput('ceid');
+
         $url = 'https://news.google.com/search?' . http_build_query([
-            'q' => $this->getInput('q'),
-            'hl' => $this->getInput('hl'),
-            'gl' => $this->getInput('gl'),
-            'ceid' => $this->getInput('ceid')
+            'q' => $q,
+            'hl' => $hl,
+            'gl' => $gl,
+            'ceid' => $ceid
         ]);
 
         $html = getSimpleHTMLDOM($url)
@@ -68,7 +68,7 @@ class GoogleNewsSearchBridge extends BridgeAbstract {
                 $source = $srcElem->plaintext;
             }
 
-            $timestamp = time(); // pas de date exacte dans le HTML simple
+            $timestamp = time(); // Google News n’indique pas la date exacte dans le HTML simple
 
             $this->items[] = [
                 'uri' => $fullLink,
